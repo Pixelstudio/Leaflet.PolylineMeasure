@@ -150,7 +150,7 @@
                text: 'Change Units',
                metres: 'metres',
                landmiles: 'land miles',
-               nauticalmiles: 'nautical miles'
+               nauticalmiles: 'walking time'
             },
             /**
              * Unit symbols to show in the Unit Control button and measurement labels
@@ -162,7 +162,7 @@
                kilometres: 'km',
                feet: 'ft',
                landmiles: 'mi',
-               nauticalmiles: 'nm'
+               nauticalmiles: 'min'
             },
             /**
              * Styling settings for the temporary dashed rubberline
@@ -520,13 +520,13 @@
 
         _changeUnit: function() {
             if (this.options.unit == "metres") {
-                this.options.unit = "landmiles";
-                document.getElementById("unitControlId").innerHTML = this.options.unitControlLabel.landmiles;
-                this._unitControl.title = this.options.unitControlTitle.text +" [" + this.options.unitControlTitle.landmiles  + "]";
-            } else if (this.options.unit == "landmiles") {
                 this.options.unit = "nauticalmiles";
                 document.getElementById("unitControlId").innerHTML = this.options.unitControlLabel.nauticalmiles;
                 this._unitControl.title = this.options.unitControlTitle.text +" [" + this.options.unitControlTitle.nauticalmiles  + "]";
+            /*} else if (this.options.unit == "landmiles") {
+                this.options.unit = "nauticalmiles";
+                document.getElementById("unitControlId").innerHTML = this.options.unitControlLabel.nauticalmiles;
+                this._unitControl.title = this.options.unitControlTitle.text +" [" + this.options.unitControlTitle.nauticalmiles  + "]";*/
             } else {
                 this.options.unit = "metres";
                 document.getElementById("unitControlId").innerHTML = this.options.unitControlLabel.metres;
@@ -600,21 +600,28 @@
             var dist = distance;
             var unit;
             if (this.options.unit === 'nauticalmiles') {
-                unit = this.options.unitControlLabel.nauticalmiles;
-                if (dist >= 185200) {
-                    dist = (dist/1852).toFixed(0);
-                } else if (dist >= 18520) {
-                    dist = (dist/1852).toFixed(1);
-                } else if (dist >= 1852) {
-                    dist = (dist/1852).toFixed(2);
-                } else  {
+                //hacked in walking speed per m (speed 4km/h)
+                dist = (dist); //in meters
+                var speed = 1.11111111; // m/s
+
+                dist = (dist/speed) *  0.0167;
+                dist = dist.toFixed(0);
+                unit = "minuten lopen";
+                /*if (dist >= 100000) {
+                    dist = (dist/1000).toFixed(0);
+                } else if (dist >= 10000) {
+                    dist = (dist/1000).toFixed(1);
+                } else if (dist >= 1000) {
+                    dist = (dist/1000).toFixed(2);
+                } else {
                     if (this.options.distanceShowSameUnit) {
-                        dist = (dist/1852).toFixed(3);
+                        dist = (dist/1000).toFixed(3);
                     } else {
-                        dist = (dist/0.3048).toFixed(0);
-                        unit = this.options.unitControlLabel.feet;
+                        dist = (dist).toFixed(0);
+
+                        unit = "minuten lopen";
                     }
-                }
+                }*/
             } else if (this.options.unit === 'landmiles') {
                 unit = this.options.unitControlLabel.landmiles;
                 if (dist >= 160934.4) {
@@ -961,7 +968,6 @@
             if (!this._mapdragging) {
                 this._currentLine.addPoint (e.latlng);
                 this._map.fire('polylinemeasure:add', e);
-                this._map.fire('polylinemeasure:change', this._currentLine);
             } else {
                 this._mapdragging = false; // this manual setting to "false" needed, instead of a "moveend"-Event. Cause the mouseclick of a "moveend"-event immediately would create a point too the same time.
             }
@@ -1062,8 +1068,7 @@
                         this._updateTooltip (item, prevTooltip, totalDistance, distance, lastCircleCoords, mouseCoords);
                     }
                 }.bind(this));
-                this._map.fire('polylinemeasure:insert', e);
-                this._map.fire('polylinemeasure:change', this._arrPolylines[this._lineNr]);
+              this._map.fire('polylinemeasure:insert', e);
             }
         },
 
@@ -1080,7 +1085,6 @@
             this._map.on ('mousemove', this._mouseMove, this);
             this._map.off ('mouseup', this._dragCircleMouseup, this);
             this._map.fire('polylinemeasure:move', this._e1);
-            this._map.fire('polylinemeasure:change', this._arrPolylines[this._lineNr]);
         },
 
         _dragCircleMousemove: function (e2) {
@@ -1254,7 +1258,6 @@
                       this._layerPaint.removeLayer (this._arrPolylines[lineNr].arrowMarkers [0]);
                       this._layerPaint.removeLayer (this._arrPolylines[lineNr].polylinePath);
                       this._map.fire('polylinemeasure:remove', e1);
-                      this._map.fire('polylinemeasure:change', this._arrPolylines[this._lineNr]);
                       return;
                     }
                     
@@ -1419,7 +1422,6 @@
                 }
 
                 this._map.fire('polylinemeasure:remove', e1);
-                this._map.fire('polylinemeasure:change', this._arrPolylines[this._lineNr]);
                 return;
             }
             this._e1 = e1;
@@ -1433,33 +1435,6 @@
                 this._circleStartingLng = e1.target._latlng.lng;
                 this._map.on ('mousemove', this._dragCircleMousemove, this);
             }
-        },
-
-        /**
-         * Takes in a dataset and programatically draws the polylines and measurements to the map
-         * Dataset must be in the form of an array of LatLng[], which allows for multiple discontinuous
-         * polylines to be seeded
-         * @param {L.LatLng[][]} polylinesArray | Array of array of points
-         */
-        seed: function(polylinesArray){
-            // Hijack user actions to manually draw polylines
-            polylinesArray.forEach((polyline) => {
-                // toggle draw state on:
-                this._toggleMeasure();
-                // start line with first point of each polyline
-                this._startLine(polyline[0]);
-                // add subsequent points:
-                polyline.forEach((point, ind) => {
-                    const latLng = L.latLng(point);
-                    this._mouseMove({ latLng });
-                    this._currentLine.addPoint(latLng);
-                    // on last point,
-                    if (ind === polyline.length - 1) {
-                        this._finishPolylinePath();
-                        this._toggleMeasure();
-                    }
-                });
-            });
         }
     });
 
